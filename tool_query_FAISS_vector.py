@@ -19,8 +19,8 @@ def query_vector_store(query: str, store_name: str, top_k: int = 5) -> dict:
     """
     from langchain_community.vectorstores import FAISS
 
-    vector_stores = os.listdir("./vector_stores")
-    store_path = f"./vector_stores{store_name}"
+    vector_stores = os.listdir("./tmp/vector_stores")
+    store_path = f"./tmp/vector_stores/{store_name}"
     if store_name not in vector_stores:
         return {"error": f"Vector store '{store_name}' not found, you must create it first with tool create faiss vector"}
     
