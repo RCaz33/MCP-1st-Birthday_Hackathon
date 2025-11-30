@@ -32,7 +32,13 @@ import re
 from langchain_core.documents import Document as LangchainDocument
 
 # Reference parser & vector store tools
-from tool_create_FAISS_vector import *
+from tool_create_FAISS_vector import (
+    get_paper_from_pmid, 
+    parse_pdf_from_pubmed_pmid, 
+    get_pdf_content_serpapi, 
+    download_paper_from_doi, 
+    parse_pdf_from_pubmed_pmid, 
+    get_paper_from_arxiv_id)
 
 # Torch device detection
 import torch
