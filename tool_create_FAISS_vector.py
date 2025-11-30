@@ -43,6 +43,8 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from transformers import AutoTokenizer
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+from typing import List, Tuple,
+
 # Progress bar
 from tqdm import tqdm
 
@@ -231,7 +233,7 @@ def create_vector_store_from_list_of_doi(refs :str, VECTOR_DB_PATH:str) -> str:
     REFS = extractor.extract_references(refs) # Change here the type of IDs to DEBUG
 
     raw_docs=[]
-    for ref in tqdm(REFS):
+    for ref in tqdm(REFS, disable=True):
         if ref[0] not in set(existing_reference):
             text = process_ref(ref)
             if text:
