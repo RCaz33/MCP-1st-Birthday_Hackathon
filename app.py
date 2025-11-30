@@ -93,7 +93,7 @@ def answer_question(question):
 
             elif isinstance(st,  smolagents.agents.ActionOutput):
                 if not st.output:
-                    thoughts +=  "\n****************\nNo output from action.\n****************\n\n"
+                    thoughts +=  "\n\n\n****************\nNo output from action.\n****************\n\n"
                     yield thoughts, final_answer
                 else:
                     thoughts +=    "\n***********\nNow processing the output of the tool\n***********\n\n"
@@ -207,8 +207,8 @@ def describe_figure(figure : Image) -> str:
     Returns:
         description (str): A detailed textual description of the figure's content.
     """
-    from tool_describe_figure import thourough_picture_description
-    description = thourough_picture_description(figure)
+    from tool_describe_figure import thorough_picture_description
+    description = thorough_picture_description(figure)
     return description
 
 

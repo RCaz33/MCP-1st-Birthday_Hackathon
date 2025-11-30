@@ -308,6 +308,21 @@ def process_ref(extr_ref:tuple[str,str]) -> str:
     elif extr_ref[1] == "pmcid":
         return parse_pdf_from_pubmed_pmid(extr_ref[0])
            
+import torch
+def get_device():
+    """Detect the best available device"""
+    if torch.cuda.is_available():
+        return 'cuda'
+    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        try:
+            # Test if MPS actually works
+            torch.zeros(1).to('mps')
+            return 'mps'
+        except:
+            return 'cpu'
+    return 'cpu'
+
+
 
 from langchain_community.vectorstores.utils import DistanceStrategy
 from langchain_community.embeddings import HuggingFaceEmbeddings 
@@ -322,9 +337,11 @@ def create_vector_store_from_list_of_doi(refs :str, VECTOR_DB_PATH:str) -> str:
     from langchain_community.vectorstores import FAISS
 
     # define embedding
+    device = get_device()
+
     embedding_name="BAAI/bge-large-en-v1.5"
     embedding_model = HuggingFaceEmbeddings(model_name=embedding_name,
-                                        model_kwargs={"device": "mps"},
+                                        model_kwargs={"device": device}, # set device acording to availaility
                                         encode_kwargs={"normalize_embeddings": True},)
     try:
         # Load the vector database from the folder
