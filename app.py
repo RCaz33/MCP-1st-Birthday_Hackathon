@@ -36,8 +36,24 @@ def _safe_detach(token):
         # Suppress context-var boundary errors caused by streamed generators
         pass
 _RUNTIME_CONTEXT.detach = _safe_detach
-# --- PATCH OpenTelemetry detach bug (generator-safe) ---
+# --- END PATCH ---
 
+# --- PATCH OpenInference NonRecordingSpan bug ---
+try:
+    from openinference.instrumentation.smolagents import _wrappers
+    
+    _orig_finalize = _wrappers._finalize_step_span
+    def _safe_finalize_step_span(span, step_log):
+        # Check if span has status attribute before accessing it
+        if hasattr(span, 'status') and hasattr(span.status, 'status_code'):
+            return _orig_finalize(span, step_log)
+        # For NonRecordingSpan, just skip finalization
+        return None
+    
+    _wrappers._finalize_step_span = _safe_finalize_step_span
+except ImportError:
+    pass  # OpenInference not installed
+# --- END PATCH ---
 
 def answer_question(question):
     """Use a smolagent CodeAgent with tools to answer a question.
@@ -64,7 +80,7 @@ def answer_question(question):
         logging.info(f"Received question: {question}")
         for st in safe_agent.run(question,stream=True,return_full_result=True):
             if isinstance(st, smolagents.memory.PlanningStep):
-                plan = "# Plan" + st.plan.split("# Plan")[-1]
+                plan = "# Plan" + st.plan.split("## 2. Plan")[-1]
                 for m in plan.split("\n"):
                     thoughts += "\n" + m
                     yield thoughts, final_answer
@@ -89,7 +105,7 @@ def answer_question(question):
                         thoughts += m
                         yield thoughts, final_answer
 
-                thoughts += "\n********** End fo Step " + str(st.step_number) + " : *********\n" + str(st.token_usage) + "\nStep duration" + str(st.timing) + "\n\n"
+                thoughts += "\n\n\n********** End fo Step " + str(st.step_number) + " : *********\n" + str(st.token_usage) + "\nStep duration" + str(st.timing) + "\n\n"
                 yield thoughts, final_answer
             elif isinstance(st, smolagents.memory.FinalAnswerStep):
                 final_answer = st.output
