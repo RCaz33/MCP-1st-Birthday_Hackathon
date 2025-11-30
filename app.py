@@ -5,6 +5,8 @@ import smolagents
 import json
 import re
 import ast
+import requests 
+
 
 agent = manager_agent
 
