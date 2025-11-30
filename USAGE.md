@@ -13,6 +13,6 @@ Use the specialized code agent from gradio interface [track agent reasonning]
 ## Use your chat with MCP tools - clinical trials
 
 
-![alt text](img/tool_clinical_trials.png)
+![alt text](img/use_tool_clinical_trials.png)
 
 ## Use your chat with MCP tools - create RAG
