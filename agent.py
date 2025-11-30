@@ -101,42 +101,9 @@ def parse_pdf(pdf_path:str)->list[str]:
         text.append(page.extract_text())
     return text
 
-# @tool
-# def make_rag_ressource(paths :list(str)) -> list(str):
-#     """
-#     Use extracted text to build a RAG tool and retreive documents to use to answer request
-
-#     Args:
-#         paths: The list of path where the file are stored
-
-#     Returns:
-#         A list of strings, where each string is the extracted text content
-#         from the retreiver
-#     """
-
-#     pdf_files=[]
-#     for path in paths:
-
-
-#     pdf_documents = []
-#     for pdf_file in pdf_files:
-#         loader = PyPDFLoader(pdf_file)
-#         pdf_documents.extend(loader.load())
-#     embeddings_model = OpenAIEmbeddings()
-#     pdf_texts = [doc.page_content for doc in pdf_documents]
-#     return ""
-
-
-# # Initialize the model
-# model = InferenceClientModel(
-#     model_id="Qwen/Qwen3-Coder-30B-A3B-Instruct", 
-#     provider="nebius"
-# )
-
 
 
 # Create clinical trial search agent
-
 clinical_agent = CodeAgent(
     name="clinical_agent",
     description=(

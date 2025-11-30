@@ -235,3 +235,16 @@ Medical question answering
 Literature reviews
 
 Automated extraction pipelines
+
+
+## Git branches
+
+main : main branch to merge development
+dev : auxiliary branches to add components
+production : branch to push on huggingface space [specific remote branch]
+
+Changes for productio includes:
+- Guard function to insure clinical trials topic
+- PATCH OpenInference 
+- disbale tqmd
+- patch 
