@@ -43,7 +43,7 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from transformers import AutoTokenizer
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from typing import List, Tuple,
+from typing import List, Tuple
 
 # Progress bar
 from tqdm import tqdm

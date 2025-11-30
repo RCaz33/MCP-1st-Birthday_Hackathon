@@ -22,11 +22,6 @@ A real-time streaming of LLM reasoning, tools for creating/querying FAISS RAG ve
 Instrumentation through OpenTelemetry and Langfuse provides end-to-end observability, ensuring transparent execution, step-level reasoning logs, and high-quality scientific outputs.\
 In total, this MCP server delivers an extensible platform for evidence-based biomedical question answering, clinical trial intelligence, and automated scientific data extraction.
 
-# Set-up in huggingchat
-1. Use the specialized code agent from gradio interface [track agent reasonning]
-* Must Add NEBIUS_API_KEY secrets to the huggingface space in order to use the Agent
-2. Add MCP server to huggingchat [Choose an LLM to interact with the MCP tools]
-
 # MCP Server — Detailed Technical Description
 
 This MCP (Model Context Protocol) server provides a multi-agent orchestration framework optimized for clinical research, biomedical data extraction, scientific literature retrieval, and web-augmented analytical reasoning.
