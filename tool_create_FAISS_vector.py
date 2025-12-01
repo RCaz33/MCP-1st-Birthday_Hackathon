@@ -369,9 +369,9 @@ from transformers import AutoTokenizer
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from tqdm import tqdm
 
-def create_vector_store_from_list_of_doi(refs :str, VECTOR_DB_PATH:str) -> str:
+def create_vector_store_from_list_of_doi(refs :str, VECTOR_DB_NAME:str) -> str:
 
-    VECTOR_DB_PATH = "./tmp/vector_stores/" + VECTOR_DB_PATH
+    VECTOR_DB_PATH = "./tmp/vector_stores/" + VECTOR_DB_NAME
     
     from langchain_community.vectorstores import FAISS
 
@@ -434,10 +434,25 @@ def create_vector_store_from_list_of_doi(refs :str, VECTOR_DB_PATH:str) -> str:
             print("merge vector store")
             KNOWLEDGE_VECTOR_DATABASE.merge_from(NEW_KNOWLEDGE_VECTOR_DATABASE)
             KNOWLEDGE_VECTOR_DATABASE.save_local(VECTOR_DB_PATH)
+            vector_type={"name":VECTOR_DB_NAME,
+                        "num_vectors" : KNOWLEDGE_VECTOR_DATABASE.index.ntotal,
+                        "vector_dim" : KNOWLEDGE_VECTOR_DATABASE.index.d,
+                        "distance_strategy" : KNOWLEDGE_VECTOR_DATABASE.distance_strategy}
         else:
             NEW_KNOWLEDGE_VECTOR_DATABASE.save_local(VECTOR_DB_PATH)
 
-        return VECTOR_DB_PATH
+            vector_type={"name":VECTOR_DB_NAME,
+                         "num_vectors" : NEW_KNOWLEDGE_VECTOR_DATABASE.index.ntotal,
+                        "vector_dim" : NEW_KNOWLEDGE_VECTOR_DATABASE.index.d,
+                        "distance_strategy" : NEW_KNOWLEDGE_VECTOR_DATABASE.distance_strategy}
+        return str(vector_type)
     
     else:
-        return f"all the data already in vector store {VECTOR_DB_PATH}"
+        if KNOWLEDGE_VECTOR_DATABASE:
+            vector_type={"name":VECTOR_DB_NAME,
+                            "num_vectors" : KNOWLEDGE_VECTOR_DATABASE.index.ntotal,
+                            "vector_dim" : KNOWLEDGE_VECTOR_DATABASE.index.d,
+                            "distance_strategy" : KNOWLEDGE_VECTOR_DATABASE.distance_strategy}
+            return str(vector_type)
+        else:
+            return f"could not extract new ref for this vector store"

@@ -19,19 +19,19 @@ from smolagents import (
 
 load_dotenv()
 
-from langfuse import get_client
-langfuse = get_client()
-if langfuse.auth_check():
-    print("Langfuse client is authenticated and ready!")
-else:
-    print("Authentication failed. Please check your credentials and host.")
+# from langfuse import get_client
+# langfuse = get_client()
+# if langfuse.auth_check():
+#     print("Langfuse client is authenticated and ready!")
+# else:
+#     print("Authentication failed. Please check your credentials and host.")
 
 
-from openinference.instrumentation.smolagents import SmolagentsInstrumentor
-SmolagentsInstrumentor().instrument()
+# from openinference.instrumentation.smolagents import SmolagentsInstrumentor
+# SmolagentsInstrumentor().instrument()
 
 model = LiteLLMModel(
-    model_id="openai/Qwen/Qwen3-Coder-480B-A35B-Instruct",
+    model_id="openai/nvidia/Llama-3_1-Nemotron-Ultra-253B-v1",
     api_key=os.environ.get("NEBIUS_API_KEY"),
     api_base="https://api.tokenfactory.nebius.com/v1/"
 )
@@ -113,6 +113,7 @@ clinical_agent = CodeAgent(
         "Gather general or recent information from online sources. "
         "Use Wikipedia for overviews, DuckDuckGo for recent data, and VisitWebpageTool for specific URLs. "
         "Return structured summaries with sources."
+        "Use the ClinicalTrialsSearchTool() for any question related to clinical trial"
     ),
     tools=[ClinicalTrialsSearchTool()],
     additional_authorized_imports=["time", "numpy", "pandas"],
@@ -150,10 +151,11 @@ manager_agent = CodeAgent(
     "Most important task is to provide a complete answer to user questions based on clinical trial data and online information. "
     "Orchestrate workflow between clinical and online agents. "
     "Validate outputs, resolve conflicts, and ensure the final answer is complete and accurate."
+    "rimarily use the managed agent clinical_agent for question related to clinical trials"
     ),
-    tools=[FinalAnswerTool()],
+    tools=[FinalAnswerTool(),ClinicalTrialsSearchTool()],
     model=model,
-    managed_agents=[clinical_agent,search_online_info],
+    # managed_agents=[clinical_agent,search_online_info],
     # executor_type="modal",
     provide_run_summary=True,
     additional_authorized_imports=["time", "numpy", "pandas"],

@@ -83,7 +83,7 @@ def answer_question(question, history):
         question_with_history = "Conversation history:\n" + str(history) + "\n\nNew user question:\n " + question
         for st in safe_agent.run(question_with_history,stream=True,return_full_result=True):
             if isinstance(st, smolagents.memory.PlanningStep):
-                plan = "# Plan" + st.plan.split("## 2. Plan")[-1]
+                plan = 20*"# " + "\n# Planning of manager agent" + st.plan.split("## 2. Plan")[-1]
                 for m in plan.split("\n"):
                     thoughts += "\n" + m
                     yield thoughts, final_answer, history
@@ -103,13 +103,20 @@ def answer_question(question, history):
                     yield thoughts, final_answer, history
 
             elif isinstance(st,  smolagents.memory.ActionStep):
-                if st.observations:
-                    for m in st.observations.split("\n")[1:]:
-                        thoughts += m
+        
+                for chatmessage in st.model_input_messages:
+                    if chatmessage.role == "assistant":
+                        managed_agent_plan = chatmessage.content[0]['text'].split("2. Plan")[-1]
+                        thoughts += "Managed agent plan:\n"
+                        for l in managed_agent_plan.split("\n"):
+                            thoughts += l
+                        thoughts += "\n\n--> Code action from managed agent \n" + st.code_action +"\n\n"
                         yield thoughts, final_answer, history
-
-                thoughts += "\n\n\n********** End fo Step " + str(st.step_number) + " : *********\n" + str(st.token_usage) + "\nStep duration" + str(st.timing) + "\n\n"
+                thoughts += "\n********** End fo Step " + str(st.step_number) + " : *********\n" + str(st.token_usage) + "\nStep duration" + str(st.timing) + "\n\n"
                 yield thoughts, final_answer, history
+
+
+
             elif isinstance(st, smolagents.memory.FinalAnswerStep):
                 final_answer = st.output
                 history.append({"question": question, "answer": final_answer})
@@ -122,13 +129,6 @@ def answer_question(question, history):
         print("Request cancelled")
         return "Request cancelled","Submit new request", ""
 
-
-
-# def create_rag_files(refs :list[str], VECTOR_DB_PATH:str)-> str:
-#     from tool_create_FAISS_vector import create_vector_store_from_list_of_doi
-
-#     FAISS_VECTOR_PATH = create_vector_store_from_list_of_doi(refs,VECTOR_DB_PATH)
-#     return FAISS_VECTOR_PATH
 
 def tool_clinical_trial(query_cond:str=None, query_term:str=None,query_lead:str=None,max_results: str="5") -> str:
     """
@@ -196,6 +196,7 @@ def create_rag(refs :str, VECTOR_DB_PATH:str)-> str:
     """
     from tool_create_FAISS_vector import create_vector_store_from_list_of_doi
     FAISS_VECTOR_PATH = create_vector_store_from_list_of_doi(refs,VECTOR_DB_PATH)
+
     return FAISS_VECTOR_PATH
 
 
@@ -207,11 +208,11 @@ def use_rag(query: str, store_name: str, top_k: int = 5) -> str:
         store_name (str): The path to the FAISS vector store to query.
         top_k (int): The number of top-k most relevant context documents to retrieve (default: 5).
     Returns:
-        str: A JSON string containing the retrieved context, including the content and source (DOI).
+        str: A TOON formated string containing the retrieved contexts, including the contents, the source and the scores.
     """
     from tool_query_FAISS_vector import query_vector_store
     context_as_dict = query_vector_store(query, store_name, top_k)
-    return json.dumps(context_as_dict, indent=2)
+    return str(context_as_dict)
 
 
 def describe_figure(image : Image.Image) -> str:
@@ -230,14 +231,6 @@ def describe_figure(image : Image.Image) -> str:
 # Create neat interface - Question Analyzer as a Blocks component
 with gr.Blocks() as interface2:
     gr.Markdown("# Question Analyzer")
-    # gr.Markdown("""Enter a question to analyze. Examples:
-    # - Find the name of the sponsor that did the most studies on Alzheimer's disease in the last 10 years.
-    # - Provide a summary of recent clinical trials on diabetes and list 3 relevant research articles from PubMed.
-    # - What are the scientific paper linked to the clinical study referenced as NCT04516746?
-    # - How many clinical studies on cancer were completed in the last 5 years?
-    # - Find recent phase 3 trials for lung cancer sponsored by Pfizer
-    # """)
-    
     with gr.Row():
         with gr.Column():
             question_input = gr.Textbox(
@@ -246,9 +239,9 @@ with gr.Blocks() as interface2:
                 lines=3,
             )
             gr.Examples(["What is the weather in LA?",
-                         "What are the pmid of the study NCT04516746?",
-                         "How many studies on cancer were completed in the last 5 years?",
-                         "Find phase 3 trials for lung cancer sponsored by Pfizer"],question_input)
+                         "What are the 5 most recent clinical study sponsored by Merck?",
+                         "How many trials were completed in 2025 by AbbVie?",
+                         "What are the pmids associated with the study NCT04516746?",],question_input)
             with gr.Row():
                 submit_btn = gr.Button("Submit", variant="primary")
                 stop_btn   = gr.Button("Stop", variant="secondary") 
@@ -334,7 +327,8 @@ with gr.Blocks() as interface3:
                 inputs=[ref_input, vector_name_input]
             )
             path_output = gr.Textbox(
-                label="Path of the vector store"
+                label="Path of the vector store",
+                lines=4
             )
             submit_btn = gr.Button("Create Vector Store")
             submit_btn.click(
@@ -353,7 +347,7 @@ demo = gr.TabbedInterface(
             fn=use_rag, 
             inputs=[gr.Textbox(label="Question that needs context to answer", placeholder="What is the dose of medicine to gove an infant under type2 diabetes"), 
                     gr.Textbox(label="Name of the vector store to use", placeholder="Diabetes, Sickel_cell_anemia, Prostate_cancer, ..")], 
-            outputs=gr.Textbox(label="Answer with Rag",placeholder="Your answer will be provided here"),
+            outputs=gr.Textbox(label="Answer with Rag",lines=8, placeholder="Your answer will be provided here"),
             api_name="use_vector_store_to_create_context"),
          gr.Interface(
             fn=tool_clinical_trial, 

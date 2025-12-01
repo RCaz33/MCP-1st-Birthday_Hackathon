@@ -44,14 +44,17 @@ def query_vector_store(query: str, store_name: str, top_k: int = 5) -> dict:
         embedding_model, 
         allow_dangerous_deserialization=True  
         )
+    
+    results = vector_store.similarity_search_with_score(query, top_k)
 
-    results = vector_store.similarity_search(query, top_k)
-    
-    context = [r.page_content for r in results]
-    sources = [r.metadata["source"] for r in results]
-    
-    return {
+    context = [r[0].page_content for r in results][::-1]
+    sources = [r[0].metadata["source"] for r in results][::-1]
+    scores = [r[1] for r in results][::-1]
+
+    dict_ = {
         "context": context,
         "sources": sources,
-        "store_name": store_name
+        "scores": scores,
+        "store_name": "s"
     }
+    return dict_
