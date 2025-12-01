@@ -371,7 +371,7 @@ from tqdm import tqdm
 
 def create_vector_store_from_list_of_doi(refs :str, VECTOR_DB_PATH:str) -> str:
 
-    VECTOR_DB_PATH = "./tmp/vector_stores" + VECTOR_DB_PATH
+    VECTOR_DB_PATH = "./tmp/vector_stores/" + VECTOR_DB_PATH
     
     from langchain_community.vectorstores import FAISS
 
