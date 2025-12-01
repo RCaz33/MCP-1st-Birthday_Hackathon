@@ -395,7 +395,7 @@ class ClinicalTrialsSearchTool(Tool):
         return result
 
 
-    def forward(self, query_cond:str=None, query_term:str=None,query_lead:str=None,max_results: int = 5000) -> list:
+    def forward(self, query_cond:str=None, query_term:str=None,query_lead:str=None,max_results: int = None) -> list:
         """
         Search ClinicalTrials.gov for trials.
         
@@ -419,13 +419,12 @@ class ClinicalTrialsSearchTool(Tool):
         params = {k: v for k, v in params.items() if v is not None}
         try:
             response = requests.get(
-                "https://clinicaltrials.gov/api/v2/studies",
+                "https://clinicaltrials.gov/api/v2/studies", # LIMIT BY THE API ? 
                 params=params,
                 timeout=30
             )
             response.raise_for_status()
             studies = response.json().get("studies", [])
-            
             structured_trials = []
             for i, study in enumerate(studies):
                 structured_data = self._extract_partner_info(study)

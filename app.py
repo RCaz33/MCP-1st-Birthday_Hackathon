@@ -26,7 +26,7 @@ def is_clinical_question(query: str) -> bool:
 import logging
 from datetime import datetime
 logging.info("Processing request")
-from langfuse import get_client
+from langfuse import get_client, propagate_attributes
 langfuse = get_client()
  
 
@@ -59,7 +59,7 @@ except ImportError:
     pass  # OpenInference not installed
 # --- END PATCH ---
 
-def answer_question(question, history):
+def Agent(question, history):
     """Use a smolagent CodeAgent with tools to answer a question.
     The agent streams its thought process (planning steps) and the final answer.
     Args:
@@ -84,70 +84,73 @@ def answer_question(question, history):
     try:
         logging.info(f"Received question: {question}")
         now = datetime.utcnow().isoformat()
-        span = langfuse.start_span(name=f"{now}_use_rag-request")
         # append history to the next question
         question_with_history = "Conversation history:\n" + str(history) + "\n\nNew user question:\n " + question
-        span.update(input=question_with_history)
-        for st in safe_agent.run(question_with_history,stream=True,return_full_result=True):
-            if isinstance(st, smolagents.memory.PlanningStep):
-                plan = 20*"# " + "\n# Planning of manager agent" + st.plan.split("## 2. Plan")[-1]
-                for m in plan.split("\n"):
-                    thoughts += "\n" + m
-                    yield thoughts, final_answer, history
-                    
-            elif isinstance(st,  smolagents.memory.ToolCall):
-                code = 20*"-" + f"\n{st.name}\n\n" + st.dict()['function']['arguments']+ "\n"+ 20*"-"
-                for m in code.split("\n"):
-                    thoughts += "\n" + m
-                    yield thoughts, final_answer, history
 
-            elif isinstance(st,  smolagents.agents.ActionOutput):
-                if not st.output:
-                    thoughts +=  "\n\n\n****************\nNo output from action.\n****************\n\n"
-                    yield thoughts, final_answer, history
-                else:
-                    thoughts +=    "\n***********\nNow processing the output of the tool\n***********\n\n"
-                    yield thoughts, final_answer, history
 
-            elif isinstance(st,  smolagents.memory.ActionStep):
-        
-                for chatmessage in st.model_input_messages:
-                    if chatmessage.role == "assistant":
-                        managed_agent_plan = chatmessage.content[0]['text'].split("2. Plan")[-1]
-                        thoughts += "Managed agent plan:\n"
-                        for l in managed_agent_plan.split("\n"):
-                            thoughts += l
-                        thoughts += "\n\n--> Code action from managed agent \n" + st.code_action +"\n\n"
+        with langfuse.start_as_current_observation(
+            as_type="span",
+            name="process-chat-message"
+        ) as root_span:
+            # Propagate session_id to all child observations
+            with propagate_attributes(session_id="chat-session-123"):
+                # All observations created here automatically have session_id
+                with root_span.start_as_current_observation(
+                    as_type="generation",
+                    name="generate-response",
+                    model="gpt-4o"
+                ) as gen:
+                    # This generation automatically has session_id
+                    pass
+
+                for st in safe_agent.run(question_with_history,stream=True,return_full_result=True):
+                    if isinstance(st, smolagents.memory.PlanningStep):
+                        plan = 20*"# " + "\n# Planning of manager agent" + st.plan.split("## 2. Plan")[-1]
+                        for m in plan.split("\n"):
+                            thoughts += "\n" + m
+                            yield thoughts, final_answer, history
+                            
+                    elif isinstance(st,  smolagents.memory.ToolCall):
+                        code = 20*"-" + f"\n{st.name}\n\n" + st.dict()['function']['arguments']+ "\n"+ 20*"-"
+                        for m in code.split("\n"):
+                            thoughts += "\n" + m
+                            yield thoughts, final_answer, history
+
+                    elif isinstance(st,  smolagents.agents.ActionOutput):
+                        if not st.output:
+                            thoughts +=  "\n\n\n****************\nNo output from action.\n****************\n\n"
+                            yield thoughts, final_answer, history
+                        else:
+                            thoughts +=    "\n***********\nNow processing the output of the tool\n***********\n\n"
+                            yield thoughts, final_answer, history
+
+                    elif isinstance(st,  smolagents.memory.ActionStep):
+                        for chatmessage in st.model_input_messages:
+                            if chatmessage.role == "assistant":
+                                managed_agent_plan = chatmessage.content[0]['text'].split("2. Plan")[-1]
+                                thoughts += "Managed agent plan:\n"
+                                for l in managed_agent_plan.split("\n"):
+                                    thoughts += l
+                                thoughts += "\n\n--> Code action from managed agent \n" + st.code_action +"\n\n"
+                                yield thoughts, final_answer, history
+                        thoughts += "\n********** End fo Step " + str(st.step_number) + " : *********\n" + str(st.token_usage) + "\nStep duration" + str(st.timing) + "\n\n"
                         yield thoughts, final_answer, history
-                thoughts += "\n********** End fo Step " + str(st.step_number) + " : *********\n" + str(st.token_usage) + "\nStep duration" + str(st.timing) + "\n\n"
-                yield thoughts, final_answer, history
 
+                    elif isinstance(st, smolagents.memory.FinalAnswerStep):
+                        final_answer = st.output
+                        history.append({"question": question, "answer": final_answer})
+                        yield thoughts, final_answer, history
 
-
-            elif isinstance(st, smolagents.memory.FinalAnswerStep):
-                span.update(output=final_answer)
-                span.end()
-                langfuse.flush()
-                final_answer = st.output
-                history.append({"question": question, "answer": final_answer})
-                yield thoughts, final_answer, history
-
-  
+        
 
     except GeneratorExit:
         print("Stream closed cleanly.")
-        span.end()
-        langfuse.flush()
         return "","", ""
     
     except gr.CancelledError:
         print("Request cancelled")
-        span.end()
-        langfuse.flush()
         return "Request cancelled","Submit new request", ""
-    
-    span.end()
-    langfuse.flush()  
+
 
 
 def tool_clinical_trial(query_cond:str=None, query_term:str=None,query_lead:str=None,max_results: str="5") -> str:
@@ -156,7 +159,7 @@ def tool_clinical_trial(query_cond:str=None, query_term:str=None,query_lead:str=
     
     Args:
         query_cond (str): Disease or condition (e.g., 'lung cancer', 'diabetes')
-        query_term (str): Other terms (e.g., 'AREA[LastUpdatePostDate]RANGE[2023-01-15,MAX]').
+        query_term (str): Other terms such as exact ID "NCTxxxxxxxx" or (e.g., 'AREA[LastUpdatePostDate]RANGE[2023-01-15,MAX]').
         query_lead (str): Searches the LeadSponsorName
         max_results (int): Number of trials to return (max: 1000)
     
@@ -282,7 +285,7 @@ with gr.Blocks() as interface2:
     chat_history = gr.State([])
 
     submit_evt = submit_btn.click(
-        fn=answer_question,
+        fn=Agent,
         inputs=[question_input, chat_history],
         outputs=[thoughts_output, response_output, chat_history],
         queue=True
@@ -376,7 +379,7 @@ demo = gr.TabbedInterface(
                     gr.Textbox(label="Searches the LeadSponsorName",placeholder="Lilly OR Sanofi"),
                     gr.Textbox(label="Max results to retreive",placeholder=50)], 
             outputs=gr.Textbox(label="TOON formated response",lines=10, placeholder="Your answer will be provided here"),
-            api_name="use_vector_store_to_create_context"),
+            api_name="use_clinical_trial_to_create_context"),
         gr.Interface(
             describe_figure, 
             gr.Image(type="pil"), 
