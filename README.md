@@ -14,3 +14,8 @@ tags:
 ---
 
 Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
+
+
+link to social media : https://www.linkedin.com/feed/update/urn:li:activity:7400904066005966848/
+
+link to vidée : 
