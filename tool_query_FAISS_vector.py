@@ -47,11 +47,8 @@ def query_vector_store(query: str, store_name: str, top_k: int = 5) -> dict:
 
     results = vector_store.similarity_search(query, top_k)
     
-    context = "\n\n".join([r["text"] for r in results])
-    sources = [
-        {"ids": r["metadata"]["source"], "relevance": r["score"]}
-        for r in results
-    ]
+    context = [r.page_content for r in results]
+    sources = [r.metadata["source"] for r in results]
     
     return {
         "context": context,
