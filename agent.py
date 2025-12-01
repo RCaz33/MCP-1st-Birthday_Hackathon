@@ -19,19 +19,19 @@ from smolagents import (
 
 load_dotenv()
 
-# from langfuse import get_client
-# langfuse = get_client()
-# if langfuse.auth_check():
-#     print("Langfuse client is authenticated and ready!")
-# else:
-#     print("Authentication failed. Please check your credentials and host.")
+from langfuse import get_client
+langfuse = get_client()
+if langfuse.auth_check():
+    print("Langfuse client is authenticated and ready!")
+else:
+    print("Authentication failed. Please check your credentials and host.")
 
 
-# from openinference.instrumentation.smolagents import SmolagentsInstrumentor
-# SmolagentsInstrumentor().instrument()
+from openinference.instrumentation.smolagents import SmolagentsInstrumentor
+SmolagentsInstrumentor().instrument()
 
 model = LiteLLMModel(
-    model_id="openai/nvidia/Llama-3_1-Nemotron-Ultra-253B-v1",
+    model_id="openai/Qwen/Qwen3-Coder-480B-A35B-Instruct",
     api_key=os.environ.get("NEBIUS_API_KEY"),
     api_base="https://api.tokenfactory.nebius.com/v1/"
 )
