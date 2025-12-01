@@ -7,6 +7,7 @@ import os
 
 
 
+
 def query_vector_store(query: str, store_name: str, top_k: int = 5) -> dict:
     """
     Query a specific vector store to retreive top_k documents related to the user question. 
@@ -32,10 +33,26 @@ def query_vector_store(query: str, store_name: str, top_k: int = 5) -> dict:
     if store_name not in vector_stores:
         return {"error": f"Vector store '{store_name}' not found, you must create it first with tool create faiss vector"}
     
+    
+    import torch
+
+    def get_device():
+        """Detect the best available device"""
+        if torch.cuda.is_available():
+            return 'cuda'
+        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            try:
+                # Test if MPS actually works
+                torch.zeros(1).to('mps')
+                return 'mps'
+            except:
+                return 'cpu'
+        return 'cpu'
+    device = get_device()
 
     embedding_name="BAAI/bge-small-en-v1.5"
     embedding_model = HuggingFaceEmbeddings(model_name=embedding_name,
-                                        model_kwargs={"device": "mps"},
+                                        model_kwargs={"device": device},
                                         encode_kwargs={"normalize_embeddings": True},)
 
 
