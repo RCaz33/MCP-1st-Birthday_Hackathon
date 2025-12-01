@@ -27,12 +27,13 @@ def query_vector_store(query: str, store_name: str, top_k: int = 5) -> dict:
     if not os.path.exists(VECTOR_STORE_DIRECTORY):
         os.makedirs(VECTOR_STORE_DIRECTORY)
     vector_stores = os.listdir(VECTOR_STORE_DIRECTORY)
+    print(vector_stores)
     store_path = f"{VECTOR_STORE_DIRECTORY}/{store_name}"
     if store_name not in vector_stores:
         return {"error": f"Vector store '{store_name}' not found, you must create it first with tool create faiss vector"}
     
 
-    embedding_name="BAAI/bge-large-en-v1.5"
+    embedding_name="BAAI/bge-small-en-v1.5"
     embedding_model = HuggingFaceEmbeddings(model_name=embedding_name,
                                         model_kwargs={"device": "mps"},
                                         encode_kwargs={"normalize_embeddings": True},)
