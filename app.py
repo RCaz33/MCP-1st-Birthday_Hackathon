@@ -164,7 +164,7 @@ def tool_clinical_trial(query_cond:str=None, query_term:str=None,query_lead:str=
             structured_data = TOON_formater(study)
             structured_trials.append(structured_data)
 
-        return structured_trials
+        return structured_trials.split("\n")
         
     except Exception as e:
         return [f"Error searching clinical trials: {str(e)}"]
@@ -232,6 +232,7 @@ with gr.Blocks() as interface2:
                 lines=3,
             )
             submit_btn = gr.Button("Submit", variant="primary")
+            stop_btn = gr.StopButton("Stop") 
             response_output = gr.Textbox(
                 label="Final Answer", 
                 placeholder="Copy/paste this output to the next tab 'Create RAG tool with FAISS vector store",
