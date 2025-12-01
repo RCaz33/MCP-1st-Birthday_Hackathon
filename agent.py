@@ -153,7 +153,7 @@ manager_agent = CodeAgent(
     "Validate outputs, resolve conflicts, and ensure the final answer is complete and accurate."
     "rimarily use the managed agent clinical_agent for question related to clinical trials"
     ),
-    tools=[FinalAnswerTool(),ClinicalTrialsSearchTool()],
+    tools=[FinalAnswerTool(),ClinicalTrialsSearchTool(),WikipediaSearchTool(),VisitWebpageTool(max_output_length=10000),DuckDuckGoSearchTool(max_results=5),search_pubmed,parse_pdf],
     model=model,
     # managed_agents=[clinical_agent,search_online_info],
     # executor_type="modal",

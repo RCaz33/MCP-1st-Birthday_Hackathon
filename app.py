@@ -24,7 +24,11 @@ def is_clinical_question(query: str) -> bool:
 
 # logging to debug
 import logging
+from datetime import datetime
 logging.info("Processing request")
+from langfuse import get_client
+langfuse = get_client()
+ 
 
 # --- PATCH OpenTelemetry detach bug (generator-safe) ---
 from opentelemetry.context import _RUNTIME_CONTEXT
@@ -79,8 +83,11 @@ def answer_question(question, history):
 
     try:
         logging.info(f"Received question: {question}")
+        now = datetime.utcnow().isoformat()
+        span = langfuse.start_span(name=f"{now}_use_rag-request")
         # append history to the next question
         question_with_history = "Conversation history:\n" + str(history) + "\n\nNew user question:\n " + question
+        span.update(input=question_with_history)
         for st in safe_agent.run(question_with_history,stream=True,return_full_result=True):
             if isinstance(st, smolagents.memory.PlanningStep):
                 plan = 20*"# " + "\n# Planning of manager agent" + st.plan.split("## 2. Plan")[-1]
@@ -118,16 +125,29 @@ def answer_question(question, history):
 
 
             elif isinstance(st, smolagents.memory.FinalAnswerStep):
+                span.update(output=final_answer)
+                span.end()
+                langfuse.flush()
                 final_answer = st.output
                 history.append({"question": question, "answer": final_answer})
                 yield thoughts, final_answer, history
+
+  
+
     except GeneratorExit:
         print("Stream closed cleanly.")
+        span.end()
+        langfuse.flush()
         return "","", ""
     
     except gr.CancelledError:
         print("Request cancelled")
+        span.end()
+        langfuse.flush()
         return "Request cancelled","Submit new request", ""
+    
+    span.end()
+    langfuse.flush()  
 
 
 def tool_clinical_trial(query_cond:str=None, query_term:str=None,query_lead:str=None,max_results: str="5") -> str:
