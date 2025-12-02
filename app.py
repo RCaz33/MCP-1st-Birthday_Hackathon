@@ -86,74 +86,51 @@ def Agent(question, history):
 
     try:
         logging.info(f"Received question: {question}")
-        now = datetime.utcnow().isoformat()
         # append history to the next question
         question_with_history = "Conversation history:\n" + str(history) + "\n\nNew user question:\n " + question
 
+        with propagate_attributes(user_id="DEV_main"):
+            for st in safe_agent.run(question_with_history,stream=True,return_full_result=True):
+                if isinstance(st, smolagents.memory.PlanningStep):
+                    plan = 20*"# " + "\n# Planning of manager agent" + st.plan.split("## 2. Plan")[-1]
+                    for m in plan.split("\n"):
+                        thoughts += "\n" + m
+                        yield thoughts, final_answer, history
+                        
+                elif isinstance(st,  smolagents.memory.ToolCall):
+                    code = 20*"-" + f"\n{st.name}\n\n" + st.dict()['function']['arguments']+ "\n"+ 20*"-"
+                    for m in code.split("\n"):
+                        thoughts += "\n" + m
+                        yield thoughts, final_answer, history
 
-        with langfuse.start_as_current_observation(
-            as_type="span",
-            name="Call_to_ClinicalTrialAgent"
-        ) as root_span:
-            # Propagate session_id to all child observations
-            with propagate_attributes(session_id=f"DEVELOPMENT_{now}"):
-                # All observations created here automatically have session_id
-                with root_span.start_as_current_observation(
-                    as_type="generation",
-                    name="SimpleCodeAgent",
-                    model="openai/Qwen/Qwen3-Coder-480B-A35B-Instruct"
-                ) as gen:
-                    Input_price_M = 0.4
-                    Output_price_M = 1.8
-                    input_tokens = 0
-                    output_tokens = 0
+                elif isinstance(st,  smolagents.agents.ActionOutput):
+                    if not st.output:
+                        thoughts +=  "\n\n\n****************\nNo output from action.\n****************\n\n"
+                        yield thoughts, final_answer, history
+                    else:
+                        thoughts +=    "\n***********\nNow processing the output of the tool\n***********\n\n"
+                        yield thoughts, final_answer, history
 
-                    for st in safe_agent.run(question_with_history,stream=True,return_full_result=True):
-                        if isinstance(st, smolagents.memory.PlanningStep):
-                            plan = 20*"# " + "\n# Planning of manager agent" + st.plan.split("## 2. Plan")[-1]
-                            for m in plan.split("\n"):
-                                thoughts += "\n" + m
-                                yield thoughts, final_answer, history
-                                
-                        elif isinstance(st,  smolagents.memory.ToolCall):
-                            code = 20*"-" + f"\n{st.name}\n\n" + st.dict()['function']['arguments']+ "\n"+ 20*"-"
-                            for m in code.split("\n"):
-                                thoughts += "\n" + m
-                                yield thoughts, final_answer, history
-
-                        elif isinstance(st,  smolagents.agents.ActionOutput):
-                            if not st.output:
-                                thoughts +=  "\n\n\n****************\nNo output from action.\n****************\n\n"
-                                yield thoughts, final_answer, history
-                            else:
-                                thoughts +=    "\n***********\nNow processing the output of the tool\n***********\n\n"
-                                yield thoughts, final_answer, history
-
-                        elif isinstance(st,  smolagents.memory.ActionStep):
-                            for chatmessage in st.model_input_messages:
-                                if chatmessage.role == "assistant":
-                                    managed_agent_plan = chatmessage.content[0]['text'].split("2. Plan")[-1]
-                                    thoughts += "Managed agent plan:\n"
-                                    for l in managed_agent_plan.split("\n"):
-                                        thoughts += l
-                                    thoughts += "\n\n--> Code action from managed agent \n" + st.code_action +"\n\n"
-                                    yield thoughts, final_answer, history
-                            thoughts += "\n********** End fo Step " + str(st.step_number) + " : *********\n" + str(st.token_usage) + "\nStep duration" + str(st.timing) + "\n\n"
-                            input_tokens += st.token_usage.dict()['input_tokens']
-                            output_tokens += st.token_usage.dict()['output_tokens']
+                elif isinstance(st,  smolagents.memory.ActionStep):
+                    for chatmessage in st.model_input_messages:
+                        if chatmessage.role == "assistant":
+                            managed_agent_plan = chatmessage.content[0]['text'].split("2. Plan")[-1]
+                            thoughts += "Managed agent plan:\n"
+                            for l in managed_agent_plan.split("\n"):
+                                thoughts += l
+                            thoughts += "\n\n--> Code action from managed agent \n" + st.code_action +"\n\n"
                             yield thoughts, final_answer, history
+                    thoughts += "\n********** End fo Step " + str(st.step_number) + " : *********\n" + str(st.token_usage) + "\nStep duration" + str(st.timing) + "\n\n"
+                    input_tokens += st.token_usage.dict()['input_tokens']
+                    output_tokens += st.token_usage.dict()['output_tokens']
+                    yield thoughts, final_answer, history
 
-                        elif isinstance(st, smolagents.memory.FinalAnswerStep):
-                            final_answer = st.output
-                            history.append({"question": question, "answer": final_answer})
-                            gen.update(input=question_with_history)
-                            gen.update(output=final_answer)
-                            gen.update(usage_detail={"input_tokens":input_tokens,"output_tokens":output_tokens})
-                            gen.update(cost_details={"input_tokens":input_tokens*Input_price_M*1e6,
-                                                     "output_tokens":output_tokens*Output_price_M*1e6})
-                            yield thoughts, final_answer, history
+                elif isinstance(st, smolagents.memory.FinalAnswerStep):
+                    final_answer = st.output
+                    history.append({"question": question, "answer": final_answer})
+                    yield thoughts, final_answer, history
 
-            
+
 
     except GeneratorExit:
         print("Stream closed cleanly.")
