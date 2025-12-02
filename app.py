@@ -121,8 +121,7 @@ def Agent(question, history):
                             thoughts += "\n\n--> Code action from managed agent \n" + st.code_action +"\n\n"
                             yield thoughts, final_answer, history
                     thoughts += "\n********** End fo Step " + str(st.step_number) + " : *********\n" + str(st.token_usage) + "\nStep duration" + str(st.timing) + "\n\n"
-                    input_tokens += st.token_usage.dict()['input_tokens']
-                    output_tokens += st.token_usage.dict()['output_tokens']
+
                     yield thoughts, final_answer, history
 
                 elif isinstance(st, smolagents.memory.FinalAnswerStep):
