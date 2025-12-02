@@ -89,45 +89,44 @@ def Agent(question, history):
         # append history to the next question
         question_with_history = "Conversation history:\n" + str(history) + "\n\nNew user question:\n " + question
 
-        with propagate_attributes(user_id="DEV_main"):
-            for st in safe_agent.run(question_with_history,stream=True,return_full_result=True):
-                if isinstance(st, smolagents.memory.PlanningStep):
-                    plan = 20*"# " + "\n# Planning of manager agent" + st.plan.split("## 2. Plan")[-1]
-                    for m in plan.split("\n"):
-                        thoughts += "\n" + m
-                        yield thoughts, final_answer, history
-                        
-                elif isinstance(st,  smolagents.memory.ToolCall):
-                    code = 20*"-" + f"\n{st.name}\n\n" + st.dict()['function']['arguments']+ "\n"+ 20*"-"
-                    for m in code.split("\n"):
-                        thoughts += "\n" + m
-                        yield thoughts, final_answer, history
-
-                elif isinstance(st,  smolagents.agents.ActionOutput):
-                    if not st.output:
-                        thoughts +=  "\n\n\n****************\nNo output from action.\n****************\n\n"
-                        yield thoughts, final_answer, history
-                    else:
-                        thoughts +=    "\n***********\nNow processing the output of the tool\n***********\n\n"
-                        yield thoughts, final_answer, history
-
-                elif isinstance(st,  smolagents.memory.ActionStep):
-                    for chatmessage in st.model_input_messages:
-                        if chatmessage.role == "assistant":
-                            managed_agent_plan = chatmessage.content[0]['text'].split("2. Plan")[-1]
-                            thoughts += "Managed agent plan:\n"
-                            for l in managed_agent_plan.split("\n"):
-                                thoughts += l
-                            thoughts += "\n\n--> Code action from managed agent \n" + st.code_action +"\n\n"
-                            yield thoughts, final_answer, history
-                    thoughts += "\n********** End fo Step " + str(st.step_number) + " : *********\n" + str(st.token_usage) + "\nStep duration" + str(st.timing) + "\n\n"
-
+        for st in safe_agent.run(question_with_history,stream=True,return_full_result=True):
+            if isinstance(st, smolagents.memory.PlanningStep):
+                plan = 20*"# " + "\n# Planning of manager agent" + st.plan.split("## 2. Plan")[-1]
+                for m in plan.split("\n"):
+                    thoughts += "\n" + m
+                    yield thoughts, final_answer, history
+                    
+            elif isinstance(st,  smolagents.memory.ToolCall):
+                code = 20*"-" + f"\n{st.name}\n\n" + st.dict()['function']['arguments']+ "\n"+ 20*"-"
+                for m in code.split("\n"):
+                    thoughts += "\n" + m
                     yield thoughts, final_answer, history
 
-                elif isinstance(st, smolagents.memory.FinalAnswerStep):
-                    final_answer = st.output
-                    history.append({"question": question, "answer": final_answer})
+            elif isinstance(st,  smolagents.agents.ActionOutput):
+                if not st.output:
+                    thoughts +=  "\n\n\n****************\nNo output from action.\n****************\n\n"
                     yield thoughts, final_answer, history
+                else:
+                    thoughts +=    "\n***********\nNow processing the output of the tool\n***********\n\n"
+                    yield thoughts, final_answer, history
+
+            elif isinstance(st,  smolagents.memory.ActionStep):
+                for chatmessage in st.model_input_messages:
+                    if chatmessage.role == "assistant":
+                        managed_agent_plan = chatmessage.content[0]['text'].split("2. Plan")[-1]
+                        thoughts += "Managed agent plan:\n"
+                        for l in managed_agent_plan.split("\n"):
+                            thoughts += l
+                        thoughts += "\n\n--> Code action from managed agent \n" + st.code_action +"\n\n"
+                        yield thoughts, final_answer, history
+                thoughts += "\n********** End fo Step " + str(st.step_number) + " : *********\n" + str(st.token_usage) + "\nStep duration" + str(st.timing) + "\n\n"
+
+                yield thoughts, final_answer, history
+
+            elif isinstance(st, smolagents.memory.FinalAnswerStep):
+                final_answer = st.output
+                history.append({"question": question, "answer": final_answer})
+                yield thoughts, final_answer, history
 
 
 
