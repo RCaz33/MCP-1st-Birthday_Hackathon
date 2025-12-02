@@ -19,7 +19,7 @@ from smolagents import (
 
 load_dotenv()
 
-from langfuse import get_client
+from langfuse import Langfuse,get_client
 langfuse = Langfuse(environment='PROD_ON_HUGGINGFACE')
 langfuse = get_client()
 if langfuse.auth_check():
