@@ -29,7 +29,8 @@ now = datetime.utcnow().isoformat()
 logging.info(f"Processing request {now}")
 
 # Use langfuse to log traces
-from langfuse import get_client, propagate_attributes
+from langfuse import Langfuse, get_client, propagate_attributes
+langfuse = Langfuse(environment='Development')
 langfuse = get_client()
  
 # --- PATCH --- In order to be able to stream Agent intenal steps to Gradio interface
@@ -102,6 +103,11 @@ def Agent(question, history):
                     name="SimpleCodeAgent",
                     model="openai/Qwen/Qwen3-Coder-480B-A35B-Instruct"
                 ) as gen:
+                    Input_price_M = 0.4
+                    Output_price_M = 1.8
+                    input_tokens = 0
+                    output_tokens = 0
+
                     for st in safe_agent.run(question_with_history,stream=True,return_full_result=True):
                         if isinstance(st, smolagents.memory.PlanningStep):
                             plan = 20*"# " + "\n# Planning of manager agent" + st.plan.split("## 2. Plan")[-1]
@@ -133,11 +139,18 @@ def Agent(question, history):
                                     thoughts += "\n\n--> Code action from managed agent \n" + st.code_action +"\n\n"
                                     yield thoughts, final_answer, history
                             thoughts += "\n********** End fo Step " + str(st.step_number) + " : *********\n" + str(st.token_usage) + "\nStep duration" + str(st.timing) + "\n\n"
+                            input_tokens += st.token_usage.dict()['input_tokens']
+                            output_tokens += st.token_usage.dict()['output_tokens']
                             yield thoughts, final_answer, history
 
                         elif isinstance(st, smolagents.memory.FinalAnswerStep):
                             final_answer = st.output
                             history.append({"question": question, "answer": final_answer})
+                            gen.update(input=question_with_history)
+                            gen.update(output=final_answer)
+                            gen.update(usage_detail={"input_tokens":input_tokens,"output_tokens":output_tokens})
+                            gen.update(cost_details={"input_tokens":input_tokens*Input_price_M*1e6,
+                                                     "output_tokens":output_tokens*Output_price_M*1e6})
                             yield thoughts, final_answer, history
 
             
