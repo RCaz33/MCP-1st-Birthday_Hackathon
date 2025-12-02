@@ -99,8 +99,8 @@ def Agent(question, history):
                 # All observations created here automatically have session_id
                 with root_span.start_as_current_observation(
                     as_type="generation",
-                    name="generate-response",
-                    model="gpt-4o"
+                    name="Simple_CodeAgent",
+                    model="openai/Qwen/Qwen3-Coder-480B-A35B-Instruct"
                 ) as gen:
                     # This generation automatically has session_id
                     pass
