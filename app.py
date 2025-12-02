@@ -95,7 +95,7 @@ def Agent(question, history):
             name="Call_to_ClinicalTrialAgent"
         ) as root_span:
             # Propagate session_id to all child observations
-            with propagate_attributes(session_id=f"DEV_{now}"):
+            with propagate_attributes(session_id=f"PROD_usrID_{now}"):
                 # All observations created here automatically have session_id
                 with root_span.start_as_current_observation(
                     as_type="generation",
