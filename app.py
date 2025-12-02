@@ -1,44 +1,48 @@
 from agent import manager_agent
 import gradio as gr
-from smolagents import stream_to_gradio
 import smolagents
 import json
 import re
 import ast
 import requests 
+from PIL import Image
 
-
-# Safe Guard for the agent
+# Safe Guard for the agent system message (does not work 100%)
 safe_agent = manager_agent
 SafeGuard = "You ONLY answer about question related to Clinical studies, if the topic asked differs, you MUST answer politely that your purpose is solely to answer question about clinical trials\n\n"
 safe_agent.prompt_templates['system_prompt'] = SafeGuard + manager_agent.prompt_templates['system_prompt']
-# Guard function to insure clinical trials topic
+
+# Guard function to insure clinical trials topic (allows bypassing a call to the agent)
 def is_clinical_question(query: str) -> bool:
     keywords = [
-        "clinical", "trial", "efficacy", "phase I", "phase II", "phase III",
+        "clinical", "trial", "efficacy", "phase I", "phase II", "phase III", "study", "studies", 
         "protocol", "adverse event", "safety", "randomized", "placebo",
         "biomarker", "endpoint", "inclusion", "exclusion"
     ]
     q = query.lower()
     return any(kw in q for kw in keywords)
 
-# logging to debug
+# Use logging to debug
 import logging
-logging.info("Processing request")
+from datetime import datetime
+now = datetime.utcnow().isoformat()
+logging.info(f"Processing request {now}")
 
-# --- PATCH OpenTelemetry detach bug (generator-safe) ---
+# Use langfuse to log traces
+from langfuse import get_client, propagate_attributes
+langfuse = get_client()
+ 
+# --- PATCH --- In order to be able to stream Agent intenal steps to Gradio interface
+# --- OpenTelemetry detach bug (generator-safe) ---
 from opentelemetry.context import _RUNTIME_CONTEXT
 _orig_detach = _RUNTIME_CONTEXT.detach
 def _safe_detach(token):
     try:
         _orig_detach(token)
     except Exception:
-        # Suppress context-var boundary errors caused by streamed generators
         pass
 _RUNTIME_CONTEXT.detach = _safe_detach
-# --- END PATCH ---
-
-# --- PATCH OpenInference NonRecordingSpan bug ---
+# --- OpenInference NonRecordingSpan bug ---
 try:
     from openinference.instrumentation.smolagents import _wrappers
     
@@ -55,81 +59,109 @@ except ImportError:
     pass  # OpenInference not installed
 # --- END PATCH ---
 
-def answer_question(question):
+
+# Define Agent, 
+def Agent(question, history):
     """Use a smolagent CodeAgent with tools to answer a question.
     The agent streams its thought process (planning steps) and the final answer.
     Args:
         question (str): The question to be answered by the agent.
     Yields:
-        tuple(str, str): A tuple containing the current 'thoughts' (planning/intermediate steps)
-                         and the current 'final_answer'.
+        tuple(str, str, str): A tuple containing the current 'thoughts' (planning/intermediate steps)
+                         ,the current 'final_answer', the history
     """
     
     if not is_clinical_question(question):
-        yield ("I can only answer questions related to clinical studies.", 
-    'A Clinical trial keyword mas missing (e.g. "clinical", "trial", "efficacy", "phase I", "phase II", "phase III",\
+        err_msg = 'A Clinical trial keyword mas missing (e.g. "clinical", "study", "studies", "trial", "efficacy", "phase I", "phase II", "phase III",\
     "protocol", "adverse event", "safety", "randomized", "placebo","biomarker", "endpoint", "inclusion", "exclusion"'
-)
+        history.append({"question": question, "answer": err_msg})
+        yield "I can only answer questions related to clinical studies.",err_msg,history
+               
         return
     thoughts = ""
     final_answer = ""
-    n_tokens =0
-    import langfuse
-    # Observaility
+
+
+
     try:
         logging.info(f"Received question: {question}")
-        for st in safe_agent.run(question,stream=True,return_full_result=True):
-            if isinstance(st, smolagents.memory.PlanningStep):
-                plan = "# Plan" + st.plan.split("## 2. Plan")[-1]
-                for m in plan.split("\n"):
-                    thoughts += "\n" + m
-                    yield thoughts, final_answer
-                    
-            elif isinstance(st,  smolagents.memory.ToolCall):
-                code = 20*"-" + f"\n{st.name}\n\n" + st.dict()['function']['arguments']+ "\n"+ 20*"-"
-                for m in code.split("\n"):
-                    thoughts += "\n" + m
-                    yield thoughts, final_answer
+        now = datetime.utcnow().isoformat()
+        # append history to the next question
+        question_with_history = "Conversation history:\n" + str(history) + "\n\nNew user question:\n " + question
 
-            elif isinstance(st,  smolagents.agents.ActionOutput):
-                if not st.output:
-                    thoughts +=  "\n\n\n****************\nNo output from action.\n****************\n\n"
-                    yield thoughts, final_answer
-                else:
-                    thoughts +=    "\n***********\nNow processing the output of the tool\n***********\n\n"
-                    yield thoughts, final_answer
 
-            elif isinstance(st,  smolagents.memory.ActionStep):
-                if st.observations:
-                    for m in st.observations.split("\n")[1:]:
-                        thoughts += m
-                        yield thoughts, final_answer
+        with langfuse.start_as_current_observation(
+            as_type="span",
+            name="Call_to_ClinicalTrialAgent"
+        ) as root_span:
+            # Propagate session_id to all child observations
+            with propagate_attributes(session_id=f"PROD_usrID_{now}"):
+                # All observations created here automatically have session_id
+                with root_span.start_as_current_observation(
+                    as_type="generation",
+                    name="generate-response",
+                    model="gpt-4o"
+                ) as gen:
+                    # This generation automatically has session_id
+                    pass
 
-                thoughts += "\n\n\n********** End fo Step " + str(st.step_number) + " : *********\n" + str(st.token_usage) + "\nStep duration" + str(st.timing) + "\n\n"
-                yield thoughts, final_answer
-            elif isinstance(st, smolagents.memory.FinalAnswerStep):
-                final_answer = st.output
-                yield thoughts, final_answer
+                for st in safe_agent.run(question_with_history,stream=True,return_full_result=True):
+                    if isinstance(st, smolagents.memory.PlanningStep):
+                        plan = 20*"# " + "\n# Planning of manager agent" + st.plan.split("## 2. Plan")[-1]
+                        for m in plan.split("\n"):
+                            thoughts += "\n" + m
+                            yield thoughts, final_answer, history
+                            
+                    elif isinstance(st,  smolagents.memory.ToolCall):
+                        code = 20*"-" + f"\n{st.name}\n\n" + st.dict()['function']['arguments']+ "\n"+ 20*"-"
+                        for m in code.split("\n"):
+                            thoughts += "\n" + m
+                            yield thoughts, final_answer, history
+
+                    elif isinstance(st,  smolagents.agents.ActionOutput):
+                        if not st.output:
+                            thoughts +=  "\n\n\n****************\nNo output from action.\n****************\n\n"
+                            yield thoughts, final_answer, history
+                        else:
+                            thoughts +=    "\n***********\nNow processing the output of the tool\n***********\n\n"
+                            yield thoughts, final_answer, history
+
+                    elif isinstance(st,  smolagents.memory.ActionStep):
+                        for chatmessage in st.model_input_messages:
+                            if chatmessage.role == "assistant":
+                                managed_agent_plan = chatmessage.content[0]['text'].split("2. Plan")[-1]
+                                thoughts += "Managed agent plan:\n"
+                                for l in managed_agent_plan.split("\n"):
+                                    thoughts += l
+                                thoughts += "\n\n--> Code action from managed agent \n" + st.code_action +"\n\n"
+                                yield thoughts, final_answer, history
+                        thoughts += "\n********** End fo Step " + str(st.step_number) + " : *********\n" + str(st.token_usage) + "\nStep duration" + str(st.timing) + "\n\n"
+                        yield thoughts, final_answer, history
+
+                    elif isinstance(st, smolagents.memory.FinalAnswerStep):
+                        final_answer = st.output
+                        history.append({"question": question, "answer": final_answer})
+                        yield thoughts, final_answer, history
+
+        
 
     except GeneratorExit:
         print("Stream closed cleanly.")
-        return "",""
+        return "","", ""
+    
+    except gr.CancelledError:
+        print("Request cancelled")
+        return "Request cancelled","Submit new request", ""
 
 
-
-# def create_rag_files(refs :list[str], VECTOR_DB_PATH:str)-> str:
-#     from tool_create_FAISS_vector import create_vector_store_from_list_of_doi
-
-#     FAISS_VECTOR_PATH = create_vector_store_from_list_of_doi(refs,VECTOR_DB_PATH)
-#     return FAISS_VECTOR_PATH
-
-def tool_clinical_trial(query_cond:str=None, query_term:str=None,query_lead:str=None,max_results: int = 5000) -> list:
+# Set up clinical trial MCP tool with structured TOON output
+def tool_clinical_trial(query_cond:str=None, query_term:str=None,query_lead:str=None,max_results: str="5") -> str:
     """
     Search Clinical Trials database for trials with 4 arguments.
     
     Args:
         query_cond (str): Disease or condition (e.g., 'lung cancer', 'diabetes')
-        query_term (str): Other terms (e.g., 'AREA[LastUpdatePostDate]RANGE[2023-01-15,MAX]').
+        query_term (str): Other terms such as exact ID "NCTxxxxxxxx" or (e.g., 'AREA[LastUpdatePostDate]RANGE[2023-01-15,MAX]').
         query_lead (str): Searches the LeadSponsorName
         max_results (int): Number of trials to return (max: 1000)
     
@@ -137,10 +169,11 @@ def tool_clinical_trial(query_cond:str=None, query_term:str=None,query_lead:str=
         list(str): each string being a structured representation of a trial.
     """
     from tool_TOON_formater import TOON_formater
+
     try:
         max_results = int(max_results)
     except:
-        max_results = 500
+        max_results = 5
         
     params = {
         "query.cond": query_cond,
@@ -160,9 +193,14 @@ def tool_clinical_trial(query_cond:str=None, query_term:str=None,query_lead:str=
         studies = response.json().get("studies", [])
         
         structured_trials = []
+        stream = ""
         for i, study in enumerate(studies):
             structured_data = TOON_formater(study)
             structured_trials.append(structured_data)
+
+            for l in structured_data.split("\n"):
+                stream += "\n\n"+ 10*"--" + "\n" + structured_data
+                yield stream
 
         return structured_trials
         
@@ -170,7 +208,7 @@ def tool_clinical_trial(query_cond:str=None, query_term:str=None,query_lead:str=
         return [f"Error searching clinical trials: {str(e)}"]
     
 
-
+# Set up RAG
 def create_rag(refs :str, VECTOR_DB_PATH:str)-> str:
     """Create a RAG (Retrieval-Augmented Generation) vector store from a list of DOIs.
     Args:
@@ -181,10 +219,10 @@ def create_rag(refs :str, VECTOR_DB_PATH:str)-> str:
     """
     from tool_create_FAISS_vector import create_vector_store_from_list_of_doi
     FAISS_VECTOR_PATH = create_vector_store_from_list_of_doi(refs,VECTOR_DB_PATH)
+
     return FAISS_VECTOR_PATH
 
-
-
+# Use RAG
 def use_rag(query: str, store_name: str, top_k: int = 5) -> str:
     """Retrieve context from a FAISS vector store based on a query.
     Args:
@@ -192,70 +230,25 @@ def use_rag(query: str, store_name: str, top_k: int = 5) -> str:
         store_name (str): The path to the FAISS vector store to query.
         top_k (int): The number of top-k most relevant context documents to retrieve (default: 5).
     Returns:
-        str: A JSON string containing the retrieved context, including the content and source (DOI).
+        str: A TOON formated string containing the retrieved contexts, including the contents, the source and the scores.
     """
     from tool_query_FAISS_vector import query_vector_store
     context_as_dict = query_vector_store(query, store_name, top_k)
-    return json.dumps(context_as_dict, indent=2)
+    return str(context_as_dict)
 
-from PIL import Image
-
-def describe_figure(figure : Image) -> str:
+# Describe a figure with Gemini
+def describe_figure(image : Image.Image) -> str:
     """Provide a detailed, thorough description of an image figure.
     Args:
-        figure (Image): The image figure object (from PIL) to be described.
+        image (Image.Image): The image to describe.
     Returns:
         description (str): A detailed textual description of the figure's content.
     """
     from tool_describe_figure import thorough_picture_description
-    description = thorough_picture_description(figure)
+    description = thorough_picture_description(image)
     return description
 
-
-
 # Create neat interface - Question Analyzer as a Blocks component
-with gr.Blocks() as interface2:
-    gr.Markdown("# Question Analyzer")
-    gr.Markdown("""Enter a question to analyze. Examples:
-    - Find the name of the sponsor that did the most studies on Alzheimer's disease in the last 10 years.
-    - Provide a summary of recent clinical trials on diabetes and list 3 relevant research articles from PubMed.
-    - What are the scientific paper linked to the clinical study referenced as NCT04516746?
-    - How many clinical studies on cancer were completed in the last 5 years?
-    - Find recent phase 3 trials for lung cancer sponsored by Pfizer
-    """)
-    
-    with gr.Row():
-        with gr.Column():
-            question_input = gr.Textbox(
-                label="Question", 
-                placeholder="Enter your question here...",
-                lines=3,
-            )
-            submit_btn = gr.Button("Submit", variant="primary")
-            response_output = gr.Textbox(
-                label="Final Answer", 
-                placeholder="Copy/paste this output to the next tab 'Create RAG tool with FAISS vector store",
-                interactive=False, 
-                lines=8
-            )
-        with gr.Column():
-            thoughts_output = gr.Textbox(
-                label="LLM Thoughts/Reasoning", 
-                placeholder="The Agent reasonning will be outputed here, use it to track its validity",
-                interactive=False, 
-                lines=8
-            )
-
-    
-    chat_history = gr.State([])
-    
-    submit_btn.click(
-        fn=answer_question,
-        inputs=[question_input],
-        outputs=[thoughts_output, response_output],
-        queue=True
-    )
-
 with gr.Blocks() as interface1:
     with gr.Row():
         with gr.Column():
@@ -291,22 +284,90 @@ with gr.Blocks() as interface1:
     Literature reviews
     Automated extraction pipelines""")
 
-# Combine interfaces into a single tabbed interface
+with gr.Blocks() as interface2:
+    gr.Markdown("# Question Analyzer")
+    with gr.Row():
+        with gr.Column():
+            question_input = gr.Textbox(
+                label="Question", 
+                placeholder="Enter your question here...",
+                lines=3,
+            )
+            gr.Examples(["What is the weather in LA?",
+                         "What are the 5 most recent clinical study sponsored by Merck?",
+                         "How many trials were completed in 2025 by AbbVie?",
+                         "What are the pmids associated with the study NCT04516746?",],question_input)
+            with gr.Row():
+                submit_btn = gr.Button("Submit", variant="primary")
+                stop_btn   = gr.Button("Stop", variant="secondary") 
+            response_output = gr.Textbox(
+                label="Final Answer", 
+                placeholder="Copy/paste this output to the next tab 'Create RAG tool with FAISS vector store",
+                interactive=False, 
+                lines=8
+            )
+        with gr.Column():
+            thoughts_output = gr.Textbox(
+                label="LLM Thoughts/Reasoning", 
+                placeholder="The Agent reasonning will be outputed here, use it to track its validity",
+                interactive=False, 
+                lines=8
+            )
+
+    chat_history = gr.State([]) # Necessary to save conversation history
+
+    submit_evt = submit_btn.click(
+        fn=Agent,
+        inputs=[question_input, chat_history],
+        outputs=[thoughts_output, response_output, chat_history],
+        queue=True
+    )
+    stop_btn.click(fn=None, cancels=[submit_evt])
+
+with gr.Blocks() as interface3:
+    with gr.Row():
+        with gr.Column():
+            gr.Markdown('### Create a vector store. You can specify an existing vector store to update it')
+            ref_input = gr.Textbox(
+                label="List of references to include in vector store",
+                lines=2,
+                info="(can be DOIs, PMIDs, arXivs, ... and a mix of it)"
+            )
+            vector_name_input = gr.Textbox(
+                label="Name of the vector store",
+                lines=2,
+                placeholder="My_Diabetes_vector"
+            )
+        with gr.Column():
+            gr.Examples(
+                examples=[
+                    ["I found the folowing PMID: 40445502, 40050939, 29884191", "Ex1_vector_store"],
+                    ["2501.16868, 29641991, PMC5034499, 10.1007","Ex2_vector_store" ]
+                ],
+                inputs=[ref_input, vector_name_input]
+            )
+            path_output = gr.Textbox(
+                label="Path of the vector store",
+                lines=4
+            )
+            submit_btn = gr.Button("Create Vector Store")
+            submit_btn.click(
+                fn=create_rag,
+                inputs=[ref_input, vector_name_input],
+                outputs=path_output,
+                queue=True
+            )
+
+# Combined interfaces with tabs
 demo = gr.TabbedInterface(
     [interface1,
         interface2, 
-     gr.Interface(
-         fn=create_rag, 
-         inputs=[gr.Textbox(label="List of references to include in vector store",lines=2, info="(can be DOIs, PMIDs, erxivs, ... and a mix of it)"),
-                 gr.Textbox(label="Name of the vactore store", lines=2, placeholder="My_Diabetes_vector") ],
-                 outputs=gr.Textbox("path of the vactore store"),
-            api_name="create_vector_store_for_rag"),
-        
+     interface3,
          gr.Interface(
             fn=use_rag, 
             inputs=[gr.Textbox(label="Question that needs context to answer", placeholder="What is the dose of medicine to gove an infant under type2 diabetes"), 
                     gr.Textbox(label="Name of the vector store to use", placeholder="Diabetes, Sickel_cell_anemia, Prostate_cancer, ..")], 
-            outputs=gr.Textbox(label="Answer with Rag",placeholder="Your answer will be provided here"),
+            outputs=gr.Textbox(label="Answer with Rag",lines=8, placeholder="Your answer will be provided here"),
             api_name="use_vector_store_to_create_context"),
          gr.Interface(
             fn=tool_clinical_trial, 
@@ -314,8 +375,8 @@ demo = gr.TabbedInterface(
                     gr.Textbox(label="Other terms (e.g., 'AREA[LastUpdatePostDate]RANGE[2023-01-15,MAX]'", placeholder=""),
                     gr.Textbox(label="Searches the LeadSponsorName",placeholder="Lilly OR Sanofi"),
                     gr.Textbox(label="Max results to retreive",placeholder=50)], 
-            outputs=gr.Textbox(label="TOON formated response",placeholder="Your answer will be provided here"),
-            api_name="use_vector_store_to_create_context"),
+            outputs=gr.Textbox(label="TOON formated response",lines=10, placeholder="Your answer will be provided here"),
+            api_name="use_clinical_trial_to_create_context"),
         gr.Interface(
             describe_figure, 
             gr.Image(type="pil"), 
@@ -330,5 +391,6 @@ demo = gr.TabbedInterface(
     "Thourough figure description",]
 )
 
+# Allows MCP
 if __name__ == "__main__":
     demo.queue().launch(mcp_server=True)

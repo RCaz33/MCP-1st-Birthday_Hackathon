@@ -19,25 +19,27 @@ from smolagents import (
 
 load_dotenv()
 
-from langfuse import get_client
-langfuse = get_client()
-if langfuse.auth_check():
-    print("Langfuse client is authenticated and ready!")
-else:
-    print("Authentication failed. Please check your credentials and host.")
+# from langfuse import get_client
+# langfuse = get_client()
+# if langfuse.auth_check():
+#     print("Langfuse client is authenticated and ready!")
+# else:
+#     print("Authentication failed. Please check your credentials and host.")
 
 
-from openinference.instrumentation.smolagents import SmolagentsInstrumentor
-SmolagentsInstrumentor().instrument()
+# from openinference.instrumentation.smolagents import SmolagentsInstrumentor
+# SmolagentsInstrumentor().instrument()
 
+
+# Define model/provider to use
 model = LiteLLMModel(
     model_id="openai/Qwen/Qwen3-Coder-480B-A35B-Instruct",
     api_key=os.environ.get("NEBIUS_API_KEY"),
     api_base="https://api.tokenfactory.nebius.com/v1/"
 )
 
+# Tools : use docstring to pass instructions to CodeAgent
 from tool_clinical_trial import ClinicalTrialsSearchTool
-
 
 @tool
 def search_pubmed(topic: str, author: str) -> list[str]:
@@ -101,42 +103,9 @@ def parse_pdf(pdf_path:str)->list[str]:
         text.append(page.extract_text())
     return text
 
-# @tool
-# def make_rag_ressource(paths :list(str)) -> list(str):
-#     """
-#     Use extracted text to build a RAG tool and retreive documents to use to answer request
-
-#     Args:
-#         paths: The list of path where the file are stored
-
-#     Returns:
-#         A list of strings, where each string is the extracted text content
-#         from the retreiver
-#     """
-
-#     pdf_files=[]
-#     for path in paths:
-
-
-#     pdf_documents = []
-#     for pdf_file in pdf_files:
-#         loader = PyPDFLoader(pdf_file)
-#         pdf_documents.extend(loader.load())
-#     embeddings_model = OpenAIEmbeddings()
-#     pdf_texts = [doc.page_content for doc in pdf_documents]
-#     return ""
-
-
-# # Initialize the model
-# model = InferenceClientModel(
-#     model_id="Qwen/Qwen3-Coder-30B-A3B-Instruct", 
-#     provider="nebius"
-# )
-
 
 
 # Create clinical trial search agent
-
 clinical_agent = CodeAgent(
     name="clinical_agent",
     description=(
@@ -146,13 +115,14 @@ clinical_agent = CodeAgent(
         "Gather general or recent information from online sources. "
         "Use Wikipedia for overviews, DuckDuckGo for recent data, and VisitWebpageTool for specific URLs. "
         "Return structured summaries with sources."
+        "Use the ClinicalTrialsSearchTool() for any question related to clinical trial"
     ),
     tools=[ClinicalTrialsSearchTool()],
     additional_authorized_imports=["time", "numpy", "pandas"],
     # executor_type="blaxel", #executor_type="modal",
-    use_structured_outputs_internally=True,
     return_full_result=True,
-    planning_interval=3,                      # V3 add structure
+    planning_interval=3,                      # Structure planing
+    use_structured_outputs_internally=True,   # Uses output for planning
     model=model,
     max_steps=6,
     verbosity_level=2
@@ -183,10 +153,11 @@ manager_agent = CodeAgent(
     "Most important task is to provide a complete answer to user questions based on clinical trial data and online information. "
     "Orchestrate workflow between clinical and online agents. "
     "Validate outputs, resolve conflicts, and ensure the final answer is complete and accurate."
+    "rimarily use the managed agent clinical_agent for question related to clinical trials"
     ),
-    tools=[FinalAnswerTool()],
+    tools=[FinalAnswerTool(),ClinicalTrialsSearchTool(),WikipediaSearchTool(),VisitWebpageTool(max_output_length=10000),DuckDuckGoSearchTool(max_results=5),search_pubmed,parse_pdf],
     model=model,
-    managed_agents=[clinical_agent,search_online_info],
+    # managed_agents=[clinical_agent,search_online_info],
     # executor_type="modal",
     provide_run_summary=True,
     additional_authorized_imports=["time", "numpy", "pandas"],

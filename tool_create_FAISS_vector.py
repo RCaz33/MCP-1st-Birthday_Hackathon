@@ -1,37 +1,63 @@
+# PDF parsing
 from pypdf import PdfReader
-import requests
 from io import BytesIO
-import serpapi
+
+# HTTP requests
+import requests
+
+# Environment
 import os
 from dotenv import load_dotenv
 load_dotenv()
 
-from langchain_core.documents import Document as LangchainDocument
+# SerpAPI DOI lookup
+import serpapi
+
+# PubMed / Metapub
 from metapub import FindIt
-import requests
 import xml.etree.ElementTree as ET
 
+# FTP download
 from ftplib import FTP
 from urllib.parse import urlparse
-from io import BytesIO 
 
+# ArXiv
+import arxiv
 from langchain_community.retrievers import ArxivRetriever
 
-import arxiv
-import requests
-from io import BytesIO
+# Regex
+import re
+
+# LangChain document
+from langchain_core.documents import Document as LangchainDocument
+
+# PDF parsing
 from pypdf import PdfReader
-import re
+from io import BytesIO
 
-from langchain_community.vectorstores.utils import DistanceStrategy
-from langchain_community.embeddings import HuggingFaceEmbeddings 
-from transformers import AutoTokenizer
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from tqdm import tqdm
+# HTTP requests
+import requests
 
-import re
-from typing import List, Dict, Tuple
+# XML parsing (PubMed FTP metadata)
+import xml.etree.ElementTree as ET
 
+# FTP download
+from ftplib import FTP
+from urllib.parse import urlparse
+
+# ArXiv retrieval
+import arxiv
+from langchain_community.retrievers import ArxivRetriever
+
+# PubMed → PDF resolution
+from metapub import FindIt
+
+# SerpAPI DOI search
+import serpapi
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def parse_pdf_file(path:str) -> str:
 
@@ -179,6 +205,19 @@ def get_pdf_content_serpapi(doi: str) -> str:
 
 
 
+# Torch device detection
+import torch
+
+# Embeddings & vector store dependencies
+from langchain_community.vectorstores.utils import DistanceStrategy
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from transformers import AutoTokenizer
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from typing import List, Tuple
+
+# Progress bar
+from tqdm import tqdm
 
 class ReferenceExtractor:
     """Extract and classify references from LLM outputs."""
@@ -330,16 +369,16 @@ from transformers import AutoTokenizer
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from tqdm import tqdm
 
-def create_vector_store_from_list_of_doi(refs :str, VECTOR_DB_PATH:str) -> str:
+def create_vector_store_from_list_of_doi(refs :str, VECTOR_DB_NAME:str) -> str:
 
-    VECTOR_DB_PATH = "./tmp/vector_stores" + VECTOR_DB_PATH
+    VECTOR_DB_PATH = "./tmp/vector_stores/" + VECTOR_DB_NAME
     
     from langchain_community.vectorstores import FAISS
 
     # define embedding
     device = get_device()
 
-    embedding_name="BAAI/bge-large-en-v1.5"
+    embedding_name="BAAI/bge-small-en-v1.5"
     embedding_model = HuggingFaceEmbeddings(model_name=embedding_name,
                                         model_kwargs={"device": device}, # set device acording to availaility
                                         encode_kwargs={"normalize_embeddings": True},)
@@ -365,7 +404,7 @@ def create_vector_store_from_list_of_doi(refs :str, VECTOR_DB_PATH:str) -> str:
     REFS = extractor.extract_references(refs) # Change here the type of IDs to DEBUG
 
     raw_docs=[]
-    for ref in tqdm(REFS):
+    for ref in tqdm(REFS, disable=True):
         if ref[0] not in set(existing_reference):
             text = process_ref(ref)
             if text:
@@ -395,10 +434,25 @@ def create_vector_store_from_list_of_doi(refs :str, VECTOR_DB_PATH:str) -> str:
             print("merge vector store")
             KNOWLEDGE_VECTOR_DATABASE.merge_from(NEW_KNOWLEDGE_VECTOR_DATABASE)
             KNOWLEDGE_VECTOR_DATABASE.save_local(VECTOR_DB_PATH)
+            vector_type={"name":VECTOR_DB_NAME,
+                        "num_vectors" : KNOWLEDGE_VECTOR_DATABASE.index.ntotal,
+                        "vector_dim" : KNOWLEDGE_VECTOR_DATABASE.index.d,
+                        "distance_strategy" : KNOWLEDGE_VECTOR_DATABASE.distance_strategy}
         else:
             NEW_KNOWLEDGE_VECTOR_DATABASE.save_local(VECTOR_DB_PATH)
 
-        return VECTOR_DB_PATH
+            vector_type={"name":VECTOR_DB_NAME,
+                         "num_vectors" : NEW_KNOWLEDGE_VECTOR_DATABASE.index.ntotal,
+                        "vector_dim" : NEW_KNOWLEDGE_VECTOR_DATABASE.index.d,
+                        "distance_strategy" : NEW_KNOWLEDGE_VECTOR_DATABASE.distance_strategy}
+        return str(vector_type)
     
     else:
-        return f"all the data already in vector store {VECTOR_DB_PATH}"
+        if KNOWLEDGE_VECTOR_DATABASE:
+            vector_type={"name":VECTOR_DB_NAME,
+                            "num_vectors" : KNOWLEDGE_VECTOR_DATABASE.index.ntotal,
+                            "vector_dim" : KNOWLEDGE_VECTOR_DATABASE.index.d,
+                            "distance_strategy" : KNOWLEDGE_VECTOR_DATABASE.distance_strategy}
+            return str(vector_type)
+        else:
+            return f"could not extract new ref for this vector store"
