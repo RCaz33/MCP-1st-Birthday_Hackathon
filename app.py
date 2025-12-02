@@ -30,7 +30,7 @@ logging.info(f"Processing request {now}")
 
 # Use langfuse to log traces
 from langfuse import Langfuse, get_client, propagate_attributes
-langfuse = Langfuse(environement='PROD_ON_HUGGINGFACE')
+langfuse = Langfuse(environment='PROD_ON_HUGGINGFACE')
 langfuse = get_client()
  
 # --- PATCH --- In order to be able to stream Agent intenal steps to Gradio interface
