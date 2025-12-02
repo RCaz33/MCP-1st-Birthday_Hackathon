@@ -1,6 +1,5 @@
 from agent import manager_agent
 import gradio as gr
-from smolagents import stream_to_gradio
 import smolagents
 import json
 import re
@@ -8,11 +7,12 @@ import ast
 import requests 
 from PIL import Image
 
-# Safe Guard for the agent
+# Safe Guard for the agent system message (does not work 100%)
 safe_agent = manager_agent
 SafeGuard = "You ONLY answer about question related to Clinical studies, if the topic asked differs, you MUST answer politely that your purpose is solely to answer question about clinical trials\n\n"
 safe_agent.prompt_templates['system_prompt'] = SafeGuard + manager_agent.prompt_templates['system_prompt']
-# Guard function to insure clinical trials topic
+
+# Guard function to insure clinical trials topic (allows bypassing a call to the agent)
 def is_clinical_question(query: str) -> bool:
     keywords = [
         "clinical", "trial", "efficacy", "phase I", "phase II", "phase III", "study", "studies", 
@@ -22,27 +22,27 @@ def is_clinical_question(query: str) -> bool:
     q = query.lower()
     return any(kw in q for kw in keywords)
 
-# logging to debug
+# Use logging to debug
 import logging
 from datetime import datetime
-logging.info("Processing request")
+now = datetime.utcnow().isoformat()
+logging.info(f"Processing request {now}")
+
+# Use langfuse to log traces
 from langfuse import get_client, propagate_attributes
 langfuse = get_client()
  
-
-# --- PATCH OpenTelemetry detach bug (generator-safe) ---
+# --- PATCH --- In order to be able to stream Agent intenal steps to Gradio interface
+# --- OpenTelemetry detach bug (generator-safe) ---
 from opentelemetry.context import _RUNTIME_CONTEXT
 _orig_detach = _RUNTIME_CONTEXT.detach
 def _safe_detach(token):
     try:
         _orig_detach(token)
     except Exception:
-        # Suppress context-var boundary errors caused by streamed generators
         pass
 _RUNTIME_CONTEXT.detach = _safe_detach
-# --- END PATCH ---
-
-# --- PATCH OpenInference NonRecordingSpan bug ---
+# --- OpenInference NonRecordingSpan bug ---
 try:
     from openinference.instrumentation.smolagents import _wrappers
     
@@ -59,6 +59,8 @@ except ImportError:
     pass  # OpenInference not installed
 # --- END PATCH ---
 
+
+# Define Agent, 
 def Agent(question, history):
     """Use a smolagent CodeAgent with tools to answer a question.
     The agent streams its thought process (planning steps) and the final answer.
@@ -90,10 +92,10 @@ def Agent(question, history):
 
         with langfuse.start_as_current_observation(
             as_type="span",
-            name="process-chat-message"
+            name="Call_to_ClinicalTrialAgent"
         ) as root_span:
             # Propagate session_id to all child observations
-            with propagate_attributes(session_id="chat-session-123"):
+            with propagate_attributes(session_id=f"DEV_{now}"):
                 # All observations created here automatically have session_id
                 with root_span.start_as_current_observation(
                     as_type="generation",
@@ -152,7 +154,7 @@ def Agent(question, history):
         return "Request cancelled","Submit new request", ""
 
 
-
+# Set up clinical trial MCP tool with structured TOON output
 def tool_clinical_trial(query_cond:str=None, query_term:str=None,query_lead:str=None,max_results: str="5") -> str:
     """
     Search Clinical Trials database for trials with 4 arguments.
@@ -168,10 +170,8 @@ def tool_clinical_trial(query_cond:str=None, query_term:str=None,query_lead:str=
     """
     from tool_TOON_formater import TOON_formater
 
-  
     try:
         max_results = int(max_results)
-
     except:
         max_results = 5
         
@@ -208,7 +208,7 @@ def tool_clinical_trial(query_cond:str=None, query_term:str=None,query_lead:str=
         return [f"Error searching clinical trials: {str(e)}"]
     
 
-
+# Set up RAG
 def create_rag(refs :str, VECTOR_DB_PATH:str)-> str:
     """Create a RAG (Retrieval-Augmented Generation) vector store from a list of DOIs.
     Args:
@@ -222,8 +222,7 @@ def create_rag(refs :str, VECTOR_DB_PATH:str)-> str:
 
     return FAISS_VECTOR_PATH
 
-
-
+# Use RAG
 def use_rag(query: str, store_name: str, top_k: int = 5) -> str:
     """Retrieve context from a FAISS vector store based on a query.
     Args:
@@ -237,7 +236,7 @@ def use_rag(query: str, store_name: str, top_k: int = 5) -> str:
     context_as_dict = query_vector_store(query, store_name, top_k)
     return str(context_as_dict)
 
-
+# Describe a figure with Gemini
 def describe_figure(image : Image.Image) -> str:
     """Provide a detailed, thorough description of an image figure.
     Args:
@@ -249,49 +248,7 @@ def describe_figure(image : Image.Image) -> str:
     description = thorough_picture_description(image)
     return description
 
-
-
 # Create neat interface - Question Analyzer as a Blocks component
-with gr.Blocks() as interface2:
-    gr.Markdown("# Question Analyzer")
-    with gr.Row():
-        with gr.Column():
-            question_input = gr.Textbox(
-                label="Question", 
-                placeholder="Enter your question here...",
-                lines=3,
-            )
-            gr.Examples(["What is the weather in LA?",
-                         "What are the 5 most recent clinical study sponsored by Merck?",
-                         "How many trials were completed in 2025 by AbbVie?",
-                         "What are the pmids associated with the study NCT04516746?",],question_input)
-            with gr.Row():
-                submit_btn = gr.Button("Submit", variant="primary")
-                stop_btn   = gr.Button("Stop", variant="secondary") 
-            response_output = gr.Textbox(
-                label="Final Answer", 
-                placeholder="Copy/paste this output to the next tab 'Create RAG tool with FAISS vector store",
-                interactive=False, 
-                lines=8
-            )
-        with gr.Column():
-            thoughts_output = gr.Textbox(
-                label="LLM Thoughts/Reasoning", 
-                placeholder="The Agent reasonning will be outputed here, use it to track its validity",
-                interactive=False, 
-                lines=8
-            )
-
-    chat_history = gr.State([])
-
-    submit_evt = submit_btn.click(
-        fn=Agent,
-        inputs=[question_input, chat_history],
-        outputs=[thoughts_output, response_output, chat_history],
-        queue=True
-    )
-    stop_btn.click(fn=None, cancels=[submit_evt])
-
 with gr.Blocks() as interface1:
     with gr.Row():
         with gr.Column():
@@ -327,6 +284,46 @@ with gr.Blocks() as interface1:
     Literature reviews
     Automated extraction pipelines""")
 
+with gr.Blocks() as interface2:
+    gr.Markdown("# Question Analyzer")
+    with gr.Row():
+        with gr.Column():
+            question_input = gr.Textbox(
+                label="Question", 
+                placeholder="Enter your question here...",
+                lines=3,
+            )
+            gr.Examples(["What is the weather in LA?",
+                         "What are the 5 most recent clinical study sponsored by Merck?",
+                         "How many trials were completed in 2025 by AbbVie?",
+                         "What are the pmids associated with the study NCT04516746?",],question_input)
+            with gr.Row():
+                submit_btn = gr.Button("Submit", variant="primary")
+                stop_btn   = gr.Button("Stop", variant="secondary") 
+            response_output = gr.Textbox(
+                label="Final Answer", 
+                placeholder="Copy/paste this output to the next tab 'Create RAG tool with FAISS vector store",
+                interactive=False, 
+                lines=8
+            )
+        with gr.Column():
+            thoughts_output = gr.Textbox(
+                label="LLM Thoughts/Reasoning", 
+                placeholder="The Agent reasonning will be outputed here, use it to track its validity",
+                interactive=False, 
+                lines=8
+            )
+
+    chat_history = gr.State([]) # Necessary to save conversation history
+
+    submit_evt = submit_btn.click(
+        fn=Agent,
+        inputs=[question_input, chat_history],
+        outputs=[thoughts_output, response_output, chat_history],
+        queue=True
+    )
+    stop_btn.click(fn=None, cancels=[submit_evt])
+
 with gr.Blocks() as interface3:
     with gr.Row():
         with gr.Column():
@@ -361,7 +358,7 @@ with gr.Blocks() as interface3:
                 queue=True
             )
 
-# Combine interfaces into a single tabbed interface
+# Combined interfaces with tabs
 demo = gr.TabbedInterface(
     [interface1,
         interface2, 
@@ -394,5 +391,6 @@ demo = gr.TabbedInterface(
     "Thourough figure description",]
 )
 
+# Allows MCP
 if __name__ == "__main__":
     demo.queue().launch(mcp_server=True)

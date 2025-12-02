@@ -19,25 +19,27 @@ from smolagents import (
 
 load_dotenv()
 
-from langfuse import get_client
-langfuse = get_client()
-if langfuse.auth_check():
-    print("Langfuse client is authenticated and ready!")
-else:
-    print("Authentication failed. Please check your credentials and host.")
+# from langfuse import get_client
+# langfuse = get_client()
+# if langfuse.auth_check():
+#     print("Langfuse client is authenticated and ready!")
+# else:
+#     print("Authentication failed. Please check your credentials and host.")
 
 
-from openinference.instrumentation.smolagents import SmolagentsInstrumentor
-SmolagentsInstrumentor().instrument()
+# from openinference.instrumentation.smolagents import SmolagentsInstrumentor
+# SmolagentsInstrumentor().instrument()
 
+
+# Define model/provider to use
 model = LiteLLMModel(
     model_id="openai/Qwen/Qwen3-Coder-480B-A35B-Instruct",
     api_key=os.environ.get("NEBIUS_API_KEY"),
     api_base="https://api.tokenfactory.nebius.com/v1/"
 )
 
+# Tools : use docstring to pass instructions to CodeAgent
 from tool_clinical_trial import ClinicalTrialsSearchTool
-
 
 @tool
 def search_pubmed(topic: str, author: str) -> list[str]:
@@ -118,9 +120,9 @@ clinical_agent = CodeAgent(
     tools=[ClinicalTrialsSearchTool()],
     additional_authorized_imports=["time", "numpy", "pandas"],
     # executor_type="blaxel", #executor_type="modal",
-    use_structured_outputs_internally=True,
     return_full_result=True,
-    planning_interval=3,                      # V3 add structure
+    planning_interval=3,                      # Structure planing
+    use_structured_outputs_internally=True,   # Uses output for planning
     model=model,
     max_steps=6,
     verbosity_level=2
