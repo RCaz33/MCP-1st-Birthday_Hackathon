@@ -29,9 +29,7 @@ now = datetime.utcnow().isoformat()
 logging.info(f"Processing request {now}")
 
 # Use langfuse to log traces
-from langfuse import Langfuse, get_client, propagate_attributes
-langfuse = Langfuse(environment='PROD_ON_HUGGINGFACE')
-langfuse = get_client()
+from langfuse import propagate_attributes
  
 # --- PATCH --- In order to be able to stream Agent intenal steps to Gradio interface
 # --- OpenTelemetry detach bug (generator-safe) ---
@@ -91,7 +89,9 @@ def Agent(question, history):
         question_with_history = "Conversation history:\n" + str(history) + "\n\nNew user question:\n " + question
 
         # Propagate session_id to all child observations
-        with propagate_attributes(session_id=f"PROD_usrID_{now}"):
+        with propagate_attributes(tags=["Production","Code Agent","HuggingSpace"],
+                                  user_id="Add logic for troubleshootinh",
+                                  session_id=f"Add logic to bill user according to usage"):
             for st in safe_agent.run(question_with_history,stream=True,return_full_result=True):
                 if isinstance(st, smolagents.memory.PlanningStep):
                     plan = 20*"# " + "\n# Planning of manager agent" + st.plan.split("## 2. Plan")[-1]
