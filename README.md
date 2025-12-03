@@ -14,3 +14,11 @@ tags:
 ---
 
 Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
+
+
+devv 666 only langchain in app.py
+dev777 with propagate in app.py
+
+dev 888 langchain in agent.py - no propagate
+
+dev 999 langchain in agent.py / propagare in app.py
