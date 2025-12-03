@@ -1,6 +1,7 @@
 import os
 import re
 import requests
+from datetime import datetime
 from dotenv import load_dotenv
 from markdownify import markdownify
 from requests.exceptions import RequestException
@@ -19,17 +20,18 @@ from smolagents import (
 
 load_dotenv()
 
-# Tracking
-from openinference.instrumentation.smolagents import SmolagentsInstrumentor
-SmolagentsInstrumentor().instrument()
-from langfuse import get_client
+
+from langfuse import Langfuse, get_client
+langfuse = Langfuse(environment='Development')
 langfuse = get_client()
 if langfuse.auth_check():
     print("Langfuse client is authenticated and ready!")
 else:
     print("Authentication failed. Please check your credentials and host.")
 
-
+# Logging LLM calls - Use for tracking
+from openinference.instrumentation.smolagents import SmolagentsInstrumentor
+SmolagentsInstrumentor().instrument()
 
 # Define model/provider to use
 model = LiteLLMModel(
@@ -155,10 +157,10 @@ manager_agent = CodeAgent(
     "Validate outputs, resolve conflicts, and ensure the final answer is complete and accurate."
     "rimarily use the managed agent clinical_agent for question related to clinical trials"
     ),
-    tools=[FinalAnswerTool(),ClinicalTrialsSearchTool(),WikipediaSearchTool(),VisitWebpageTool(max_output_length=10000),DuckDuckGoSearchTool(max_results=5),search_pubmed,parse_pdf],
+    # tools=[FinalAnswerTool(),ClinicalTrialsSearchTool(),WikipediaSearchTool(),VisitWebpageTool(max_output_length=10000),DuckDuckGoSearchTool(max_results=5),search_pubmed,parse_pdf],
     model=model,
-    # managed_agents=[clinical_agent,search_online_info],
-    # executor_type="modal",
+    managed_agents=[clinical_agent,search_online_info],
+    executor_type="modal",
     provide_run_summary=True,
     additional_authorized_imports=["time", "numpy", "pandas"],
     use_structured_outputs_internally=True,
