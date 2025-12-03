@@ -8,6 +8,7 @@ from requests.exceptions import RequestException
 from smolagents import (
     LiteLLMModel,
     CodeAgent,
+    MultiStepAgent,
     ToolCallingAgent,
     InferenceClientModel,
     WebSearchTool,
@@ -120,7 +121,7 @@ clinical_agent = CodeAgent(
         "Use the ClinicalTrialsSearchTool() for any question related to clinical trial"
     ),
     tools=[ClinicalTrialsSearchTool()],
-    additional_authorized_imports=["time", "numpy", "pandas"],
+    additional_authorized_imports=["time", "numpy", "pandas","pprint"],
     # executor_type="blaxel", #executor_type="modal",
     return_full_result=True,
     planning_interval=3,                      # Structure planing
@@ -138,7 +139,7 @@ search_online_info = CodeAgent(
         "Return structured summaries with sources."
     ),
     tools=[WikipediaSearchTool(),VisitWebpageTool(max_output_length=10000),DuckDuckGoSearchTool(max_results=5),search_pubmed,parse_pdf],
-    additional_authorized_imports=["time", "numpy", "pandas"],
+    additional_authorized_imports=["time", "numpy", "pandas","pprint"],
     # use_structured_outputs_internally=True,
     # executor_type="modal",
     planning_interval=2, 
@@ -157,10 +158,10 @@ manager_agent = CodeAgent(
     "Validate outputs, resolve conflicts, and ensure the final answer is complete and accurate."
     "rimarily use the managed agent clinical_agent for question related to clinical trials"
     ),
-    # tools=[FinalAnswerTool(),ClinicalTrialsSearchTool(),WikipediaSearchTool(),VisitWebpageTool(max_output_length=10000),DuckDuckGoSearchTool(max_results=5),search_pubmed,parse_pdf],
+    tools=[FinalAnswerTool(),ClinicalTrialsSearchTool(),WikipediaSearchTool(),VisitWebpageTool(max_output_length=10000),DuckDuckGoSearchTool(max_results=5),search_pubmed,parse_pdf],
     model=model,
-    managed_agents=[clinical_agent,search_online_info],
-    executor_type="modal",
+    # managed_agents=[clinical_agent,search_online_info],
+    # executor_type="modal",
     provide_run_summary=True,
     additional_authorized_imports=["time", "numpy", "pandas"],
     use_structured_outputs_internally=True,

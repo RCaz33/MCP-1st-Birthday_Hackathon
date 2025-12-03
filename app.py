@@ -86,12 +86,12 @@ def Agent(question, history):
         # append history to the next question
         question_with_history = "Conversation history:\n" + str(history) + "\n\nNew user question:\n " + question
 
-        with propagate_attributes(tags=["Development","Simple CodeAgent"],
-                                  user_id="DEV_Ex-Question1",
-                                  session_id=f"{now}"):
+        with propagate_attributes(tags=["Development","Code Agent","Q4"],
+                                  user_id="DEV_xx",
+                                  session_id=f"Dev_codagent"):
             for st in manager_agent.run(question_with_history,stream=True,return_full_result=True):
                 if isinstance(st, smolagents.memory.PlanningStep):
-                    plan = 20*"# " + "\n# Planning of manager agent" + st.plan.split("## 2. Plan")[-1]
+                    plan = 20*"# " + "\n# Planning " + st.plan.split("## 2. Plan")[-1]
                     for m in plan.split("\n"):
                         thoughts += "\n" + m
                         yield thoughts, final_answer, history
@@ -113,11 +113,11 @@ def Agent(question, history):
                 elif isinstance(st,  smolagents.memory.ActionStep):
                     for chatmessage in st.model_input_messages:
                         if chatmessage.role == "assistant":
+                            thoughts += "Agent plan:\n"
                             managed_agent_plan = chatmessage.content[0]['text'].split("2. Plan")[-1]
-                            thoughts += "Managed agent plan:\n"
                             for l in managed_agent_plan.split("\n"):
                                 thoughts += l
-                            thoughts += "\n\n--> Code action from managed agent \n" + st.code_action +"\n\n"
+                            thoughts += "\n\n--> Action from agent \n" + (st.code_action if st.code_action else "") +"\n\n"
                             yield thoughts, final_answer, history
                     thoughts += "\n********** End fo Step " + str(st.step_number) + " : *********\n" + str(st.token_usage) + "\nStep duration" + str(st.timing) + "\n\n"
 
